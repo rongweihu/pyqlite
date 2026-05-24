@@ -1,0 +1,14 @@
+product,output,evaluation_date,maturity_date,value_date,start_date,exercise_date,spot_fx,source_nominal,contract_forward_rate,source_rate,target_rate,pay_source_currency,settlement_days,option_type,strike,foreign_notional,domestic_rate,foreign_rate,volatility,nominal,notional,fixed_rate,discount_rate,forward_rate,pay_fixed,fixed_frequency_months,floating_frequency_months,floating_spread,face_amount,coupon_rate,frequency_months,cap_floor_type,cap_rate,floor_rate,strike_rate,long_position,source_curve,target_curve,domestic_curve,foreign_curve,discount_curve,forward_curve,vol_surface
+FX_FORWARD_RATE,,2026-05-22,2027-05-24,,,,1.35,,,0.04,0.025,,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+FX_FORWARD_ZERO_NPV_RATE,,2026-05-22,2027-05-24,,,,1.35,,,0.04,0.025,,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+FX_FORWARD_NPV,,2026-05-22,2027-05-24,,,,1.35,1000000,1.36,0.04,0.025,TRUE,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+FX_OPTION_NPV,,2026-05-22,2027-05-22,,,,1.25,,,,,,,CALL,1.27,1000000,0.04,0.02,0.15,,,,,,,,,,,,,,,,,,,,,,,,
+FRA_NPV,,2026-05-22,2027-05-24,2026-11-24,,,,,,,,,2,,,,,,,,1000000,,0.035,0.035,,,,,,,,,,,0.0325,TRUE,,,,,,,
+FIXED_BOND_NPV,,2026-05-22,2029-05-22,,,,,,,,,,2,,,,,,,,,,0.04,,,,,,100,0.05,12,,,,,,,,,,,,
+CAPFLOOR_NPV,,2026-05-22,2028-11-24,,2026-11-24,,,,,,,,,,,,,,0.20,,1000000,,0.035,0.035,,,,0,,,6,CAP,0.04,,,,,,,,,,
+SWAPTION_NPV,,2026-05-22,2032-05-24,,,2027-05-24,,,,,,,,,,,,,0.18,1000000,,0.0375,0.035,0.035,TRUE,6,6,0,,,,,,,,,,,,,,,
+SWAP_FAIR_RATE,,2026-05-22,2031-05-22,,,,,,,,,,,,,,,,,1000000,,,0.035,0.035,TRUE,6,6,0,,,,,,,,,,,,,,,
+SWAP_NPV,,2026-05-22,2031-05-22,,,,,,,,,,,,,,,,,1000000,,0.03,0.035,0.035,TRUE,6,6,0,,,,,,,,,,,,,,,
+FX_FORWARD_RATE,,2026-05-22,2029-05-22,,,,1.35,,,0.04,0.025,,2,,,,,,,,,,,,,,,,,,,,,,,,2027-05-22:0.039;2029-05-22:0.041,2027-05-22:0.024;2029-05-22:0.027,,,,,
+FX_OPTION_NPV,,2026-05-22,2028-05-22,,,,1.25,,,,,,,CALL,1.27,1000000,0.04,0.02,0.15,,,,,,,,,,,,,,,,,,,,2027-05-22:0.039;2029-05-22:0.041,2027-05-22:0.024;2029-05-22:0.027,,,"-0.25,ATM,0.25|2027-05-22:0.17,0.15,0.16|2029-05-22:0.19,0.165,0.18"
+SWAP_FAIR_RATE,,2026-05-22,2031-05-22,,,,,,,,,,,,,,,,,1000000,,,0.035,0.035,TRUE,6,6,0,,,,,,,,,,,,,2027-05-22:0.033;2029-05-22:0.036;2031-05-22:0.038,2027-05-22:0.034;2029-05-22:0.037;2031-05-22:0.039,

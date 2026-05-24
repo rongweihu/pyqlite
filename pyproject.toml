@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyqlite"
+version = "0.1.0"
+description = "A standalone Python pricing kernel for IR swaps, FX forwards, and European FX options."
+readme = "README.pyqlite.md"
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Office/Business :: Financial",
+]
+
+[project.optional-dependencies]
+excel = ["xlwings>=0.30"]
+
+[tool.setuptools.packages.find]
+include = ["pyqlite*", "pyqlite_xlwings*"]
