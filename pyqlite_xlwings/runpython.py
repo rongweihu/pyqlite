@@ -6,8 +6,20 @@ except ImportError as exc:
     raise RuntimeError("pyqlite_xlwings.runpython requires xlwings to be installed") from exc
 
 from pyqlite_xlwings.functions import (
+    PYQL_BERMUDAN_SWAPTION_NPV,
     PYQL_CAPFLOOR_NPV,
+    PYQL_CDS_NPV,
+    PYQL_CDS_OPTION_NPV,
+    PYQL_CMS_SWAP_FAIR_RATE,
+    PYQL_CMS_SWAP_NPV,
+    PYQL_COMMODITY_FORWARD_NPV,
+    PYQL_COMMODITY_OPTION_NPV,
+    PYQL_COMMODITY_SWAP_NPV,
     PYQL_DIGITAL_FX_OPTION_NPV,
+    PYQL_EQUITY_ASIAN_OPTION_NPV,
+    PYQL_EQUITY_BARRIER_OPTION_NPV,
+    PYQL_EQUITY_OPTION_NPV,
+    PYQL_EQUITY_TRS_NPV,
     PYQL_FIXED_BOND_NPV,
     PYQL_FLOAT_FLOAT_NPV,
     PYQL_FRA_NPV,
@@ -21,6 +33,13 @@ from pyqlite_xlwings.functions import (
     PYQL_SWAPTION_NPV,
     PYQL_SWAP_FAIR_RATE,
     PYQL_SWAP_NPV,
+    PYQL_VARIANCE_SWAP_NPV,
+    PYQL_VOLATILITY_SWAP_NPV,
+    PYQL_XCCY_BASIS_SWAP_FAIR_PAY_SPREAD,
+    PYQL_XCCY_BASIS_SWAP_NPV,
+    PYQL_XCCY_FIXED_FLOAT_NPV,
+    PYQL_YOY_INFLATION_SWAP_NPV,
+    PYQL_ZC_INFLATION_SWAP_NPV,
 )
 
 
@@ -280,6 +299,132 @@ def _price_row(sheet, columns: dict[str, int], row: int, product: str) -> float:
             get("discount_curve"),
             get("forward_curve"),
         )
+    if product == "BERMUDAN_SWAPTION_NPV":
+        return PYQL_BERMUDAN_SWAPTION_NPV(
+            get("evaluation_date"),
+            get("exercise_dates"),
+            get("maturity_date"),
+            get("nominal"),
+            get("fixed_rate"),
+            get("discount_rate"),
+            get("forward_rate"),
+            get("volatility"),
+            get("pay_fixed", True),
+            get("fixed_frequency_months", 6),
+            get("floating_frequency_months", 6),
+            get("floating_spread", 0.0),
+            get("paths", 1024),
+            get("discount_curve"),
+            get("forward_curve"),
+        )
+    if product == "CMS_SWAP_NPV":
+        return PYQL_CMS_SWAP_NPV(
+            get("evaluation_date"),
+            get("maturity_date"),
+            get("nominal"),
+            get("fixed_rate"),
+            get("discount_rate"),
+            get("forward_rate"),
+            get("cms_tenor_months", 60),
+            get("pay_fixed", True),
+            get("frequency_months", 12),
+            get("spread", 0.0),
+            get("gearing", 1.0),
+            get("volatility"),
+            get("discount_curve"),
+            get("forward_curve"),
+        )
+    if product == "CMS_SWAP_FAIR_RATE":
+        return PYQL_CMS_SWAP_FAIR_RATE(
+            get("evaluation_date"),
+            get("maturity_date"),
+            get("nominal"),
+            get("discount_rate"),
+            get("forward_rate"),
+            get("cms_tenor_months", 60),
+            get("pay_fixed", True),
+            get("frequency_months", 12),
+            get("spread", 0.0),
+            get("gearing", 1.0),
+            get("volatility"),
+            get("discount_curve"),
+            get("forward_curve"),
+        )
+    if product == "XCCY_BASIS_SWAP_NPV":
+        return PYQL_XCCY_BASIS_SWAP_NPV(
+            get("evaluation_date"),
+            get("maturity_date"),
+            get("pay_nominal"),
+            get("receive_nominal"),
+            get("spot_fx"),
+            get("domestic_rate"),
+            get("foreign_rate"),
+            get("pay_spread", 0.0),
+            get("receive_spread", 0.0),
+            get("pay_leg_domestic", True),
+            get("frequency_months", 6),
+            get("domestic_curve"),
+            get("foreign_curve"),
+        )
+    if product == "XCCY_BASIS_SWAP_FAIR_PAY_SPREAD":
+        return PYQL_XCCY_BASIS_SWAP_FAIR_PAY_SPREAD(
+            get("evaluation_date"),
+            get("maturity_date"),
+            get("pay_nominal"),
+            get("receive_nominal"),
+            get("spot_fx"),
+            get("domestic_rate"),
+            get("foreign_rate"),
+            get("pay_spread", 0.0),
+            get("receive_spread", 0.0),
+            get("pay_leg_domestic", True),
+            get("frequency_months", 6),
+            get("domestic_curve"),
+            get("foreign_curve"),
+        )
+    if product == "XCCY_FIXED_FLOAT_NPV":
+        return PYQL_XCCY_FIXED_FLOAT_NPV(
+            get("evaluation_date"),
+            get("maturity_date"),
+            get("fixed_nominal"),
+            get("float_nominal"),
+            get("spot_fx"),
+            get("fixed_rate"),
+            get("domestic_rate"),
+            get("foreign_rate"),
+            get("float_spread", 0.0),
+            get("pay_fixed", True),
+            get("fixed_leg_domestic", True),
+            get("frequency_months", 6),
+            get("domestic_curve"),
+            get("foreign_curve"),
+        )
+    if product == "EQUITY_OPTION_NPV":
+        return PYQL_EQUITY_OPTION_NPV(get("option_type"), get("evaluation_date"), get("maturity_date"), get("spot"), get("strike"), get("quantity"), get("risk_free_rate"), get("dividend_rate"), get("volatility"))
+    if product == "EQUITY_BARRIER_OPTION_NPV":
+        return PYQL_EQUITY_BARRIER_OPTION_NPV(get("option_type"), get("evaluation_date"), get("maturity_date"), get("spot"), get("strike"), get("quantity"), get("barrier"), get("barrier_direction"), get("barrier_style"), get("risk_free_rate"), get("dividend_rate"), get("volatility"), get("paths", 1024))
+    if product == "EQUITY_ASIAN_OPTION_NPV":
+        return PYQL_EQUITY_ASIAN_OPTION_NPV(get("option_type"), get("evaluation_date"), get("maturity_date"), get("spot"), get("strike"), get("quantity"), get("risk_free_rate"), get("dividend_rate"), get("volatility"), get("paths", 1024))
+    if product == "EQUITY_TRS_NPV":
+        return PYQL_EQUITY_TRS_NPV(get("evaluation_date"), get("maturity_date"), get("notional"), get("spot"), get("initial_price"), get("risk_free_rate"), get("dividend_rate"), get("funding_rate"), get("funding_spread", 0.0), get("receive_equity", True), get("frequency_months", 3))
+    if product == "COMMODITY_FORWARD_NPV":
+        return PYQL_COMMODITY_FORWARD_NPV(get("evaluation_date"), get("maturity_date"), get("spot"), get("quantity"), get("contract_price"), get("forward_rate"), get("discount_rate"), get("long_position", True))
+    if product == "COMMODITY_SWAP_NPV":
+        return PYQL_COMMODITY_SWAP_NPV(get("evaluation_date"), get("maturity_date"), get("spot"), get("quantity"), get("fixed_price"), get("forward_rate"), get("discount_rate"), get("receive_floating", True), get("frequency_months", 1))
+    if product == "COMMODITY_OPTION_NPV":
+        return PYQL_COMMODITY_OPTION_NPV(get("option_type"), get("evaluation_date"), get("maturity_date"), get("spot"), get("quantity"), get("strike"), get("forward_rate"), get("discount_rate"), get("volatility"))
+    if product == "CDS_NPV":
+        return PYQL_CDS_NPV(get("evaluation_date"), get("maturity_date"), get("notional"), get("running_spread"), get("hazard_rate"), get("recovery_rate"), get("discount_rate"), get("buy_protection", True), get("frequency_months", 3))
+    if product == "CDS_OPTION_NPV":
+        return PYQL_CDS_OPTION_NPV(get("option_type"), get("evaluation_date"), get("exercise_date"), get("maturity_date"), get("notional"), get("running_spread"), get("strike_spread"), get("hazard_rate"), get("recovery_rate"), get("discount_rate"), get("volatility"), get("buy_protection", True), get("frequency_months", 3))
+    if product == "ZC_INFLATION_SWAP_NPV":
+        return PYQL_ZC_INFLATION_SWAP_NPV(get("evaluation_date"), get("maturity_date"), get("notional"), get("fixed_rate"), get("base_index"), get("inflation_rate"), get("discount_rate"), get("receive_inflation", True))
+    if product == "YOY_INFLATION_SWAP_NPV":
+        return PYQL_YOY_INFLATION_SWAP_NPV(get("evaluation_date"), get("maturity_date"), get("notional"), get("fixed_rate"), get("base_index"), get("inflation_rate"), get("discount_rate"), get("receive_inflation", True), get("frequency_months", 12))
+    if product == "VARIANCE_SWAP_NPV":
+        return PYQL_VARIANCE_SWAP_NPV(get("evaluation_date"), get("maturity_date"), get("strike_variance"), get("notional"), get("volatility"), get("discount_rate"), get("long_position", True))
+    if product == "VOLATILITY_SWAP_NPV":
+        return PYQL_VOLATILITY_SWAP_NPV(get("evaluation_date"), get("maturity_date"), get("strike_volatility"), get("notional"), get("volatility"), get("discount_rate"), get("long_position", True))
     raise ValueError(f"unsupported product: {product}")
 
 

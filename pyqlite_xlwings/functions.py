@@ -8,32 +8,61 @@ from pyqlite import (
     Actual365Fixed,
     AnalyticFxOptionEngine,
     AnalyticDigitalFxOptionEngine,
+    AnalyticCommodityOptionEngine,
+    AnalyticEquityOptionEngine,
+    BlackCdsOptionEngine,
     BlackCapFloorEngine,
     BlackConstantVol,
     BlackDeltaVolSurface,
     BlackVarianceCurve,
     BlackVarianceSurface,
     BlackSwaptionEngine,
+    BermudanSwaption,
     CapFloor,
     CapFloorType,
+    CdsOption,
+    CmsSwap,
+    CommodityForward,
+    CommodityOption,
+    CommoditySwap,
+    CreditDefaultSwap,
+    CrossCurrencyBasisSwap,
+    CrossCurrencyFixedFloatSwap,
     DiscountCurve,
     DiscountingBondEngine,
+    DiscountingCmsSwapEngine,
+    DiscountingCommodityForwardEngine,
+    DiscountingCommoditySwapEngine,
+    DiscountingCrossCurrencySwapEngine,
+    DiscountingEquityTotalReturnSwapEngine,
     DiscountingFraEngine,
     DiscountingFxForwardEngine,
+    DiscountingInflationSwapEngine,
     DiscountingSwapEngine,
     DigitalFxOption,
+    EquityAsianOption,
+    EquityBarrierDirection,
+    EquityBarrierOption,
+    EquityBarrierStyle,
+    EquityOption,
+    EquityTotalReturnSwap,
     FixedRateBond,
     FloatFloatSwap,
+    FlatHazardRate,
     FlatForwardCurve,
     ForwardRateAgreement,
     FxForward,
     FxOption,
     IborIndex,
+    LsmBermudanSwaptionEngine,
+    McEquityExoticEngine,
+    MidPointCdsEngine,
     NonstandardSwap,
     OptionType,
     OvernightIndexedSwap,
     Period,
     PositionType,
+    ProtectionSide,
     Schedule,
     SabrParameters,
     SabrSwaptionVolatilityCube,
@@ -44,8 +73,15 @@ from pyqlite import (
     SwaptionVolatilityMatrix,
     TimeUnit,
     VanillaSwap,
+    VarianceSwap,
+    VarianceSwapEngine,
+    VolatilitySwap,
+    VolatilitySwapEngine,
     WeekendsOnly,
+    YearOnYearInflationSwap,
     ZeroCurve,
+    ZeroCouponInflationSwap,
+    ZeroInflationCurve,
     DeltaType,
 )
 from pyqlite.cashflows import ibor_leg
@@ -404,6 +440,553 @@ def PYQL_NONSTANDARD_SWAP_NPV(
 
 
 @xw.func
+def PYQL_BERMUDAN_SWAPTION_NPV(
+    evaluation_date: Any,
+    exercise_dates: Any,
+    maturity_date: Any,
+    nominal: float,
+    fixed_rate: float,
+    discount_rate: float,
+    forward_rate: float,
+    volatility: float,
+    pay_fixed: bool = True,
+    fixed_frequency_months: int = 6,
+    floating_frequency_months: int = 6,
+    floating_spread: float = 0.0,
+    paths: int = 1024,
+    discount_curve: Any = None,
+    forward_curve: Any = None,
+) -> float:
+    """Return physical Bermudan swaption NPV using the standalone LSM engine."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    exercises = _as_date_vector(exercise_dates, eval_date, "exercise_dates")
+    discount_curve_obj = _build_curve(eval_date, discount_curve, discount_rate, "discount")
+    forward_curve_obj = _build_curve(eval_date, forward_curve, forward_rate, "forward")
+    calendar = WeekendsOnly()
+    fixed_frequency = _as_int(_default_blank(fixed_frequency_months, 6), "fixed_frequency_months")
+    floating_frequency = _as_int(_default_blank(floating_frequency_months, 6), "floating_frequency_months")
+    fixed_schedule = Schedule.generate(exercises[0], maturity, Period(fixed_frequency, TimeUnit.MONTHS), calendar=calendar)
+    floating_schedule = Schedule.generate(exercises[0], maturity, Period(floating_frequency, TimeUnit.MONTHS), calendar=calendar)
+    index = IborIndex("Excel-Ibor", Period(floating_frequency, TimeUnit.MONTHS), 2, calendar, Actual360(), forward_curve_obj)
+    swap = VanillaSwap(
+        SwapType.PAYER if _as_bool(_default_blank(pay_fixed, True), "pay_fixed") else SwapType.RECEIVER,
+        _as_float(nominal, "nominal"),
+        fixed_schedule,
+        _as_float(fixed_rate, "fixed_rate"),
+        Actual360(),
+        floating_schedule,
+        index,
+        _as_float(_default_blank(floating_spread, 0.0), "floating_spread"),
+        Actual360(),
+    )
+    vol = BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed())
+    return LsmBermudanSwaptionEngine(discount_curve_obj, vol, paths=_as_int(_default_blank(paths, 1024), "paths")).calculate(
+        BermudanSwaption(swap, exercises)
+    ).value
+
+
+@xw.func
+def PYQL_CMS_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    nominal: float,
+    fixed_rate: float,
+    discount_rate: float,
+    forward_rate: float,
+    cms_tenor_months: int = 60,
+    pay_fixed: bool = True,
+    frequency_months: int = 12,
+    spread: float = 0.0,
+    gearing: float = 1.0,
+    volatility: Any = None,
+    discount_curve: Any = None,
+    forward_curve: Any = None,
+) -> float:
+    """Return fixed-vs-CMS swap NPV with optional swaption-vol convexity adjustment."""
+    return _price_cms_swap(
+        evaluation_date,
+        maturity_date,
+        nominal,
+        fixed_rate,
+        discount_rate,
+        forward_rate,
+        cms_tenor_months,
+        pay_fixed,
+        frequency_months,
+        spread,
+        gearing,
+        volatility,
+        discount_curve,
+        forward_curve,
+    ).value
+
+
+@xw.func
+def PYQL_CMS_SWAP_FAIR_RATE(
+    evaluation_date: Any,
+    maturity_date: Any,
+    nominal: float,
+    discount_rate: float,
+    forward_rate: float,
+    cms_tenor_months: int = 60,
+    pay_fixed: bool = True,
+    frequency_months: int = 12,
+    spread: float = 0.0,
+    gearing: float = 1.0,
+    volatility: Any = None,
+    discount_curve: Any = None,
+    forward_curve: Any = None,
+) -> float:
+    """Return the par fixed rate for a fixed-vs-CMS swap."""
+    return _price_cms_swap(
+        evaluation_date,
+        maturity_date,
+        nominal,
+        0.0,
+        discount_rate,
+        forward_rate,
+        cms_tenor_months,
+        pay_fixed,
+        frequency_months,
+        spread,
+        gearing,
+        volatility,
+        discount_curve,
+        forward_curve,
+    ).fair_rate
+
+
+@xw.func
+def PYQL_XCCY_BASIS_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    pay_nominal: float,
+    receive_nominal: float,
+    spot_fx: float,
+    domestic_rate: float,
+    foreign_rate: float,
+    pay_spread: float = 0.0,
+    receive_spread: float = 0.0,
+    pay_leg_domestic: bool = True,
+    frequency_months: int = 6,
+    domestic_curve: Any = None,
+    foreign_curve: Any = None,
+) -> float:
+    """Return constant-notional cross-currency basis swap NPV in domestic currency."""
+    result = _price_xccy_basis(
+        evaluation_date,
+        maturity_date,
+        pay_nominal,
+        receive_nominal,
+        spot_fx,
+        domestic_rate,
+        foreign_rate,
+        pay_spread,
+        receive_spread,
+        pay_leg_domestic,
+        frequency_months,
+        domestic_curve,
+        foreign_curve,
+    )
+    return result.value
+
+
+@xw.func
+def PYQL_XCCY_BASIS_SWAP_FAIR_PAY_SPREAD(
+    evaluation_date: Any,
+    maturity_date: Any,
+    pay_nominal: float,
+    receive_nominal: float,
+    spot_fx: float,
+    domestic_rate: float,
+    foreign_rate: float,
+    pay_spread: float = 0.0,
+    receive_spread: float = 0.0,
+    pay_leg_domestic: bool = True,
+    frequency_months: int = 6,
+    domestic_curve: Any = None,
+    foreign_curve: Any = None,
+) -> float:
+    """Return the fair spread on the pay leg of a cross-currency basis swap."""
+    result = _price_xccy_basis(
+        evaluation_date,
+        maturity_date,
+        pay_nominal,
+        receive_nominal,
+        spot_fx,
+        domestic_rate,
+        foreign_rate,
+        pay_spread,
+        receive_spread,
+        pay_leg_domestic,
+        frequency_months,
+        domestic_curve,
+        foreign_curve,
+    )
+    return result.fair_pay_spread
+
+
+@xw.func
+def PYQL_XCCY_FIXED_FLOAT_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    fixed_nominal: float,
+    float_nominal: float,
+    spot_fx: float,
+    fixed_rate: float,
+    domestic_rate: float,
+    foreign_rate: float,
+    float_spread: float = 0.0,
+    pay_fixed: bool = True,
+    fixed_leg_domestic: bool = True,
+    frequency_months: int = 6,
+    domestic_curve: Any = None,
+    foreign_curve: Any = None,
+) -> float:
+    """Return constant-notional cross-currency fixed-float swap NPV in domestic currency."""
+    return _price_xccy_fixed_float(
+        evaluation_date,
+        maturity_date,
+        fixed_nominal,
+        float_nominal,
+        spot_fx,
+        fixed_rate,
+        domestic_rate,
+        foreign_rate,
+        float_spread,
+        pay_fixed,
+        fixed_leg_domestic,
+        frequency_months,
+        domestic_curve,
+        foreign_curve,
+    ).value
+
+
+@xw.func
+def PYQL_EQUITY_OPTION_NPV(
+    option_type: str,
+    evaluation_date: Any,
+    expiry_date: Any,
+    spot: float,
+    strike: float,
+    quantity: float,
+    risk_free_rate: float,
+    dividend_rate: float,
+    volatility: float,
+) -> float:
+    """Return European equity option NPV under Black-Scholes-Merton."""
+    eval_date = _as_date(evaluation_date)
+    expiry = _as_future_date(expiry_date, eval_date, "expiry_date")
+    engine = AnalyticEquityOptionEngine(
+        SimpleQuote(_as_float(spot, "spot")),
+        FlatForwardCurve(eval_date, _as_float(dividend_rate, "dividend_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(risk_free_rate, "risk_free_rate"), Actual365Fixed()),
+        BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed()),
+    )
+    return engine.calculate(EquityOption(_option_type(option_type), _as_float(quantity, "quantity"), _as_float(strike, "strike"), expiry)).value
+
+
+@xw.func
+def PYQL_EQUITY_BARRIER_OPTION_NPV(
+    option_type: str,
+    evaluation_date: Any,
+    expiry_date: Any,
+    spot: float,
+    strike: float,
+    quantity: float,
+    barrier: float,
+    direction: str,
+    style: str,
+    risk_free_rate: float,
+    dividend_rate: float,
+    volatility: float,
+    paths: int = 1024,
+) -> float:
+    """Return equity single-barrier option NPV under the MC exotic engine."""
+    eval_date = _as_date(evaluation_date)
+    expiry = _as_future_date(expiry_date, eval_date, "expiry_date")
+    engine = _equity_exotic_engine(eval_date, spot, risk_free_rate, dividend_rate, volatility, paths)
+    option = EquityBarrierOption(
+        _option_type(option_type),
+        _as_float(quantity, "quantity"),
+        _as_float(strike, "strike"),
+        _as_float(barrier, "barrier"),
+        _equity_barrier_direction(direction),
+        _equity_barrier_style(style),
+        expiry,
+    )
+    return engine.calculate_barrier(option).value
+
+
+@xw.func
+def PYQL_EQUITY_ASIAN_OPTION_NPV(
+    option_type: str,
+    evaluation_date: Any,
+    expiry_date: Any,
+    spot: float,
+    strike: float,
+    quantity: float,
+    risk_free_rate: float,
+    dividend_rate: float,
+    volatility: float,
+    paths: int = 1024,
+) -> float:
+    """Return equity average-rate Asian option NPV under the MC exotic engine."""
+    eval_date = _as_date(evaluation_date)
+    expiry = _as_future_date(expiry_date, eval_date, "expiry_date")
+    engine = _equity_exotic_engine(eval_date, spot, risk_free_rate, dividend_rate, volatility, paths)
+    return engine.calculate_asian(EquityAsianOption(_option_type(option_type), _as_float(quantity, "quantity"), _as_float(strike, "strike"), expiry)).value
+
+
+@xw.func
+def PYQL_EQUITY_TRS_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    notional: float,
+    spot: float,
+    initial_price: float,
+    risk_free_rate: float,
+    dividend_rate: float,
+    funding_rate: float,
+    funding_spread: float = 0.0,
+    receive_equity: bool = True,
+    frequency_months: int = 3,
+) -> float:
+    """Return equity total-return swap NPV."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    calendar = WeekendsOnly()
+    schedule = Schedule.generate(eval_date, maturity, Period(_as_int(_default_blank(frequency_months, 3), "frequency_months"), TimeUnit.MONTHS), calendar=calendar)
+    discount = FlatForwardCurve(eval_date, _as_float(risk_free_rate, "risk_free_rate"), Actual365Fixed())
+    swap = EquityTotalReturnSwap(
+        SwapType.RECEIVER if _as_bool(_default_blank(receive_equity, True), "receive_equity") else SwapType.PAYER,
+        _as_float(notional, "notional"),
+        _as_float(initial_price, "initial_price"),
+        maturity,
+        schedule,
+        _as_float(_default_blank(funding_spread, 0.0), "funding_spread"),
+        Actual360(),
+    )
+    return DiscountingEquityTotalReturnSwapEngine(
+        SimpleQuote(_as_float(spot, "spot")),
+        FlatForwardCurve(eval_date, _as_float(dividend_rate, "dividend_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(funding_rate, "funding_rate"), Actual365Fixed()),
+        discount,
+    ).calculate(swap).value
+
+
+@xw.func
+def PYQL_COMMODITY_FORWARD_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    spot: float,
+    quantity: float,
+    contract_price: float,
+    forward_rate: float,
+    discount_rate: float,
+    long_position: bool = True,
+) -> float:
+    """Return commodity forward NPV."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    engine = DiscountingCommodityForwardEngine(
+        FlatForwardCurve(eval_date, _as_float(forward_rate, "forward_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed()),
+        SimpleQuote(_as_float(spot, "spot")),
+    )
+    return engine.calculate(CommodityForward(_position_type(long_position), _as_float(quantity, "quantity"), _as_float(contract_price, "contract_price"), maturity)).value
+
+
+@xw.func
+def PYQL_COMMODITY_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    spot: float,
+    quantity: float,
+    fixed_price: float,
+    forward_rate: float,
+    discount_rate: float,
+    receive_floating: bool = True,
+    frequency_months: int = 1,
+) -> float:
+    """Return commodity fixed-vs-floating swap NPV."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    schedule = Schedule.generate(eval_date, maturity, Period(_as_int(_default_blank(frequency_months, 1), "frequency_months"), TimeUnit.MONTHS), calendar=WeekendsOnly())
+    engine = DiscountingCommoditySwapEngine(
+        FlatForwardCurve(eval_date, _as_float(forward_rate, "forward_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed()),
+        SimpleQuote(_as_float(spot, "spot")),
+    )
+    return engine.calculate(
+        CommoditySwap(SwapType.RECEIVER if _as_bool(_default_blank(receive_floating, True), "receive_floating") else SwapType.PAYER, _as_float(quantity, "quantity"), _as_float(fixed_price, "fixed_price"), schedule)
+    ).value
+
+
+@xw.func
+def PYQL_COMMODITY_OPTION_NPV(
+    option_type: str,
+    evaluation_date: Any,
+    expiry_date: Any,
+    spot: float,
+    quantity: float,
+    strike: float,
+    forward_rate: float,
+    discount_rate: float,
+    volatility: float,
+) -> float:
+    """Return commodity option NPV using Black on forwards."""
+    eval_date = _as_date(evaluation_date)
+    expiry = _as_future_date(expiry_date, eval_date, "expiry_date")
+    engine = AnalyticCommodityOptionEngine(
+        FlatForwardCurve(eval_date, _as_float(forward_rate, "forward_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed()),
+        BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed()),
+        SimpleQuote(_as_float(spot, "spot")),
+    )
+    return engine.calculate(CommodityOption(_option_type(option_type), _as_float(quantity, "quantity"), _as_float(strike, "strike"), expiry)).value
+
+
+@xw.func
+def PYQL_CDS_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    notional: float,
+    running_spread: float,
+    hazard_rate: float,
+    recovery_rate: float,
+    discount_rate: float,
+    buy_protection: bool = True,
+    frequency_months: int = 3,
+) -> float:
+    """Return CDS NPV using the midpoint default engine."""
+    cds, default_curve, discount_curve = _build_cds(evaluation_date, maturity_date, notional, running_spread, hazard_rate, discount_rate, buy_protection, frequency_months)
+    return MidPointCdsEngine(default_curve, _as_float(recovery_rate, "recovery_rate"), discount_curve).calculate(cds).value
+
+
+@xw.func
+def PYQL_CDS_OPTION_NPV(
+    option_type: str,
+    evaluation_date: Any,
+    expiry_date: Any,
+    maturity_date: Any,
+    notional: float,
+    running_spread: float,
+    strike_spread: float,
+    hazard_rate: float,
+    recovery_rate: float,
+    discount_rate: float,
+    volatility: float,
+    buy_protection: bool = True,
+    frequency_months: int = 3,
+) -> float:
+    """Return CDS option NPV using Black on forward CDS spread."""
+    cds, default_curve, discount_curve = _build_cds(evaluation_date, maturity_date, notional, running_spread, hazard_rate, discount_rate, buy_protection, frequency_months)
+    eval_date = _as_date(evaluation_date)
+    expiry = _as_future_date(expiry_date, eval_date, "expiry_date")
+    vol = BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed())
+    return BlackCdsOptionEngine(default_curve, _as_float(recovery_rate, "recovery_rate"), discount_curve, vol).calculate(
+        CdsOption(option_type, expiry, _as_float(strike_spread, "strike_spread"), cds)
+    ).value
+
+
+@xw.func
+def PYQL_ZC_INFLATION_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    notional: float,
+    fixed_rate: float,
+    base_index: float,
+    inflation_rate: float,
+    discount_rate: float,
+    receive_inflation: bool = True,
+) -> float:
+    """Return zero-coupon inflation swap NPV."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    curve = ZeroInflationCurve(eval_date, _as_float(base_index, "base_index"), _as_float(inflation_rate, "inflation_rate"), Actual365Fixed())
+    swap = ZeroCouponInflationSwap(
+        SwapType.RECEIVER if _as_bool(_default_blank(receive_inflation, True), "receive_inflation") else SwapType.PAYER,
+        _as_float(notional, "notional"),
+        eval_date,
+        maturity,
+        _as_float(fixed_rate, "fixed_rate"),
+        _as_float(base_index, "base_index"),
+        Actual365Fixed(),
+    )
+    return DiscountingInflationSwapEngine(curve, FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed())).calculate_zero_coupon(swap).value
+
+
+@xw.func
+def PYQL_YOY_INFLATION_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    notional: float,
+    fixed_rate: float,
+    base_index: float,
+    inflation_rate: float,
+    discount_rate: float,
+    receive_inflation: bool = True,
+    frequency_months: int = 12,
+) -> float:
+    """Return year-on-year inflation swap NPV."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    schedule = Schedule.generate(eval_date, maturity, Period(_as_int(_default_blank(frequency_months, 12), "frequency_months"), TimeUnit.MONTHS), calendar=WeekendsOnly())
+    curve = ZeroInflationCurve(eval_date, _as_float(base_index, "base_index"), _as_float(inflation_rate, "inflation_rate"), Actual365Fixed())
+    swap = YearOnYearInflationSwap(
+        SwapType.RECEIVER if _as_bool(_default_blank(receive_inflation, True), "receive_inflation") else SwapType.PAYER,
+        _as_float(notional, "notional"),
+        schedule,
+        _as_float(fixed_rate, "fixed_rate"),
+        _as_float(base_index, "base_index"),
+        Actual365Fixed(),
+    )
+    return DiscountingInflationSwapEngine(curve, FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed())).calculate_year_on_year(swap).value
+
+
+@xw.func
+def PYQL_VARIANCE_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    strike_variance: float,
+    notional: float,
+    volatility: float,
+    discount_rate: float,
+    long_position: bool = True,
+) -> float:
+    """Return variance swap NPV from a Black variance term structure."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    swap = VarianceSwap(_position_type(long_position), _as_float(strike_variance, "strike_variance"), _as_float(notional, "notional"), eval_date, maturity)
+    return VarianceSwapEngine(
+        BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed()),
+    ).calculate(swap).value
+
+
+@xw.func
+def PYQL_VOLATILITY_SWAP_NPV(
+    evaluation_date: Any,
+    maturity_date: Any,
+    strike_volatility: float,
+    notional: float,
+    volatility: float,
+    discount_rate: float,
+    long_position: bool = True,
+) -> float:
+    """Return volatility swap NPV."""
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    swap = VolatilitySwap(_position_type(long_position), _as_float(strike_volatility, "strike_volatility"), _as_float(notional, "notional"), eval_date, maturity)
+    return VolatilitySwapEngine(
+        BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed()),
+    ).calculate(swap).value
+
+
+@xw.func
 def PYQL_FRA_NPV(
     evaluation_date: Any,
     value_date: Any,
@@ -746,6 +1329,176 @@ def _price_ois(
     return DiscountingSwapEngine(discount_curve_obj).calculate(swap)
 
 
+def _price_cms_swap(
+    evaluation_date: Any,
+    maturity_date: Any,
+    nominal: float,
+    fixed_rate: float,
+    discount_rate: float,
+    forward_rate: float,
+    cms_tenor_months: int,
+    pay_fixed: bool,
+    frequency_months: int,
+    spread: float,
+    gearing: float,
+    volatility: Any,
+    discount_curve: Any = None,
+    forward_curve: Any = None,
+):
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    frequency = _as_int(_default_blank(frequency_months, 12), "frequency_months")
+    cms_tenor = _as_int(_default_blank(cms_tenor_months, 60), "cms_tenor_months")
+    calendar = WeekendsOnly()
+    schedule = Schedule.generate(eval_date, maturity, Period(frequency, TimeUnit.MONTHS), calendar=calendar)
+    discount_curve_obj = _build_curve(eval_date, discount_curve, discount_rate, "discount")
+    forward_curve_obj = _build_curve(eval_date, forward_curve, forward_rate, "forward")
+    vol = None if volatility in (None, "") else _build_swaption_vol(eval_date, volatility)
+    swap = CmsSwap(
+        SwapType.PAYER if _as_bool(_default_blank(pay_fixed, True), "pay_fixed") else SwapType.RECEIVER,
+        _as_float(nominal, "nominal"),
+        schedule,
+        _as_float(fixed_rate, "fixed_rate"),
+        Actual360(),
+        schedule,
+        Period(cms_tenor, TimeUnit.MONTHS),
+        Actual360(),
+        _as_float(_default_blank(spread, 0.0), "spread"),
+        _as_float(_default_blank(gearing, 1.0), "gearing"),
+    )
+    return DiscountingCmsSwapEngine(discount_curve_obj, forward_curve_obj, vol).calculate(swap)
+
+
+def _price_xccy_basis(
+    evaluation_date: Any,
+    maturity_date: Any,
+    pay_nominal: float,
+    receive_nominal: float,
+    spot_fx: float,
+    domestic_rate: float,
+    foreign_rate: float,
+    pay_spread: float,
+    receive_spread: float,
+    pay_leg_domestic: bool,
+    frequency_months: int,
+    domestic_curve: Any = None,
+    foreign_curve: Any = None,
+):
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    frequency = _as_int(_default_blank(frequency_months, 6), "frequency_months")
+    calendar = WeekendsOnly()
+    schedule = Schedule.generate(eval_date, maturity, Period(frequency, TimeUnit.MONTHS), calendar=calendar)
+    domestic_curve_obj = _build_curve(eval_date, domestic_curve, domestic_rate, "domestic")
+    foreign_curve_obj = _build_curve(eval_date, foreign_curve, foreign_rate, "foreign")
+    domestic_index = IborIndex("DOM-Ibor", Period(frequency, TimeUnit.MONTHS), 2, calendar, Actual360(), domestic_curve_obj)
+    foreign_index = IborIndex("FOR-Ibor", Period(frequency, TimeUnit.MONTHS), 2, calendar, Actual360(), foreign_curve_obj)
+    pay_domestic = _as_bool(_default_blank(pay_leg_domestic, True), "pay_leg_domestic")
+    swap = CrossCurrencyBasisSwap(
+        _as_float(pay_nominal, "pay_nominal"),
+        "DOM" if pay_domestic else "FOR",
+        schedule,
+        domestic_index if pay_domestic else foreign_index,
+        _as_float(_default_blank(pay_spread, 0.0), "pay_spread"),
+        1.0,
+        _as_float(receive_nominal, "receive_nominal"),
+        "FOR" if pay_domestic else "DOM",
+        schedule,
+        foreign_index if pay_domestic else domestic_index,
+        _as_float(_default_blank(receive_spread, 0.0), "receive_spread"),
+        1.0,
+    )
+    engine = DiscountingCrossCurrencySwapEngine("DOM", domestic_curve_obj, "FOR", foreign_curve_obj, SimpleQuote(_as_float(spot_fx, "spot_fx")))
+    return engine.calculate_basis_swap(swap)
+
+
+def _price_xccy_fixed_float(
+    evaluation_date: Any,
+    maturity_date: Any,
+    fixed_nominal: float,
+    float_nominal: float,
+    spot_fx: float,
+    fixed_rate: float,
+    domestic_rate: float,
+    foreign_rate: float,
+    float_spread: float,
+    pay_fixed: bool,
+    fixed_leg_domestic: bool,
+    frequency_months: int,
+    domestic_curve: Any = None,
+    foreign_curve: Any = None,
+):
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    frequency = _as_int(_default_blank(frequency_months, 6), "frequency_months")
+    calendar = WeekendsOnly()
+    schedule = Schedule.generate(eval_date, maturity, Period(frequency, TimeUnit.MONTHS), calendar=calendar)
+    domestic_curve_obj = _build_curve(eval_date, domestic_curve, domestic_rate, "domestic")
+    foreign_curve_obj = _build_curve(eval_date, foreign_curve, foreign_rate, "foreign")
+    fixed_domestic = _as_bool(_default_blank(fixed_leg_domestic, True), "fixed_leg_domestic")
+    float_index = IborIndex(
+        "Float-Ibor",
+        Period(frequency, TimeUnit.MONTHS),
+        2,
+        calendar,
+        Actual360(),
+        foreign_curve_obj if fixed_domestic else domestic_curve_obj,
+    )
+    swap = CrossCurrencyFixedFloatSwap(
+        SwapType.PAYER if _as_bool(_default_blank(pay_fixed, True), "pay_fixed") else SwapType.RECEIVER,
+        _as_float(fixed_nominal, "fixed_nominal"),
+        "DOM" if fixed_domestic else "FOR",
+        schedule,
+        _as_float(fixed_rate, "fixed_rate"),
+        Actual360(),
+        _as_float(float_nominal, "float_nominal"),
+        "FOR" if fixed_domestic else "DOM",
+        schedule,
+        float_index,
+        _as_float(_default_blank(float_spread, 0.0), "float_spread"),
+    )
+    engine = DiscountingCrossCurrencySwapEngine("DOM", domestic_curve_obj, "FOR", foreign_curve_obj, SimpleQuote(_as_float(spot_fx, "spot_fx")))
+    return engine.calculate_fixed_float_swap(swap)
+
+
+def _equity_exotic_engine(eval_date: date, spot: float, risk_free_rate: float, dividend_rate: float, volatility: float, paths: int):
+    return McEquityExoticEngine(
+        SimpleQuote(_as_float(spot, "spot")),
+        FlatForwardCurve(eval_date, _as_float(dividend_rate, "dividend_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(risk_free_rate, "risk_free_rate"), Actual365Fixed()),
+        BlackConstantVol(eval_date, _as_float(volatility, "volatility"), Actual365Fixed()),
+        paths=_as_int(_default_blank(paths, 1024), "paths"),
+    )
+
+
+def _build_cds(
+    evaluation_date: Any,
+    maturity_date: Any,
+    notional: float,
+    running_spread: float,
+    hazard_rate: float,
+    discount_rate: float,
+    buy_protection: bool,
+    frequency_months: int,
+):
+    eval_date = _as_date(evaluation_date)
+    maturity = _as_future_date(maturity_date, eval_date, "maturity_date")
+    frequency = _as_int(_default_blank(frequency_months, 3), "frequency_months")
+    schedule = Schedule.generate(eval_date, maturity, Period(frequency, TimeUnit.MONTHS), calendar=WeekendsOnly())
+    cds = CreditDefaultSwap(
+        ProtectionSide.BUYER if _as_bool(_default_blank(buy_protection, True), "buy_protection") else ProtectionSide.SELLER,
+        _as_float(notional, "notional"),
+        _as_float(running_spread, "running_spread"),
+        schedule,
+        Actual360(),
+    )
+    return (
+        cds,
+        FlatHazardRate(eval_date, _as_float(hazard_rate, "hazard_rate"), Actual365Fixed()),
+        FlatForwardCurve(eval_date, _as_float(discount_rate, "discount_rate"), Actual365Fixed()),
+    )
+
+
 def _build_curve(reference_date: date, curve_spec: Any, fallback_rate: Any, name: str):
     if curve_spec not in (None, ""):
         curve_type, nodes = _parse_curve_spec(curve_spec, reference_date)
@@ -1046,6 +1799,8 @@ def _as_float_vector(value: Any, length: int, name: str) -> tuple[float, ...]:
     if isinstance(value, (int, float)):
         return (float(value),) * length
     if isinstance(value, str):
+        if value.strip() and set(value.strip()) == {"#"}:
+            raise ValueError(f"{name} contains Excel overflow text {value!r}; widen the cell or enter the vector as text such as 1000000;900000;800000;700000")
         pieces = [piece.strip() for piece in value.replace("\n", ";").replace(",", ";").split(";") if piece.strip()]
         values = tuple(float(piece) for piece in pieces)
     elif isinstance(value, (list, tuple)):
@@ -1063,6 +1818,26 @@ def _as_float_vector(value: Any, length: int, name: str) -> tuple[float, ...]:
     if len(values) != length:
         raise ValueError(f"{name} has {len(values)} values but expected {length}")
     return values
+
+
+def _as_date_vector(value: Any, anchor: date, name: str) -> tuple[date, ...]:
+    if value is None or value == "":
+        raise ValueError(f"{name} is required")
+    if isinstance(value, str):
+        pieces = [piece.strip() for piece in value.replace("\n", ";").replace(",", ";").split(";") if piece.strip()]
+    elif isinstance(value, (list, tuple)):
+        pieces = []
+        for item in value:
+            if isinstance(item, (list, tuple)):
+                pieces.extend(x for x in item if x not in (None, ""))
+            elif item not in (None, ""):
+                pieces.append(item)
+    else:
+        pieces = [value]
+    dates = tuple(_as_future_date(item, anchor, name) for item in pieces)
+    if not dates:
+        raise ValueError(f"{name} contains no dates")
+    return dates
 
 
 def _as_int(value: Any, name: str) -> int:
@@ -1094,3 +1869,33 @@ def _option_type(value: str) -> OptionType:
     if normalized in ("P", "PUT"):
         return OptionType.PUT
     raise ValueError("option_type must be CALL, C, PUT, or P")
+
+
+def _position_type(value: Any) -> PositionType:
+    if isinstance(value, PositionType):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        if normalized in ("LONG", "L", "BUY", "TRUE", "T", "YES", "Y", "1"):
+            return PositionType.LONG
+        if normalized in ("SHORT", "S", "SELL", "FALSE", "F", "NO", "N", "0"):
+            return PositionType.SHORT
+    return PositionType.LONG if _as_bool(value, "long_position") else PositionType.SHORT
+
+
+def _equity_barrier_direction(value: str) -> EquityBarrierDirection:
+    normalized = str(value).strip().upper()
+    if normalized in ("UP", "U"):
+        return EquityBarrierDirection.UP
+    if normalized in ("DOWN", "D"):
+        return EquityBarrierDirection.DOWN
+    raise ValueError("direction must be UP or DOWN")
+
+
+def _equity_barrier_style(value: str) -> EquityBarrierStyle:
+    normalized = str(value).strip().upper().replace("_", "").replace("-", "").replace(" ", "")
+    if normalized in ("KNOCKOUT", "OUT", "KO"):
+        return EquityBarrierStyle.KNOCK_OUT
+    if normalized in ("KNOCKIN", "IN", "KI"):
+        return EquityBarrierStyle.KNOCK_IN
+    raise ValueError("style must be KNOCK_OUT or KNOCK_IN")

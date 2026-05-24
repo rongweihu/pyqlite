@@ -8,9 +8,18 @@
 - fixed-rate and zero-coupon bonds
 - Black caps, floors, and collars
 - physical European swaptions under Black 76
+- Bermudan swaptions with a Longstaff-Schwartz swap-rate Monte Carlo engine
+- CMS swaps with CMS forward rates and swaption-vol convexity adjustment
+- constant-notional cross-currency basis and fixed-vs-floating swaps
 - FX forwards
 - European FX vanilla and digital options under Garman-Kohlhagen
 - FX barrier, double-barrier/no-touch, Asian, window barrier, forward-start, quanto, lookback, cliquet, and basket/correlation option objects with deterministic Monte Carlo engines
+- CDS and CDS options using flat/supplied default probability curves
+- European equity options and equity total-return swaps
+- equity barrier, Asian, lookback, cliquet, forward-start, and basket options
+- commodity forwards, swaps, and European options
+- zero-coupon and year-on-year inflation swaps
+- variance and volatility swaps
 
 It does not import, link, wrap, or require the C++ QuantLib library. The package is organized around independent Python modules for dates, calendars, schedules, day counters, curves, volatility, cashflows, instruments, and pricing engines.
 
@@ -95,10 +104,29 @@ PYQL_CAPFLOOR_NPV(cap_floor_type, evaluation_date, start_date, maturity_date, no
 PYQL_SWAPTION_NPV(evaluation_date, exercise_date, maturity_date, nominal, fixed_rate, discount_rate, forward_rate, volatility, pay_fixed)
 PYQL_SWAP_NPV(evaluation_date, maturity_date, nominal, fixed_rate, discount_rate, forward_rate, pay_fixed, fixed_frequency_months, floating_frequency_months, floating_spread)
 PYQL_SWAP_FAIR_RATE(evaluation_date, maturity_date, nominal, discount_rate, forward_rate, pay_fixed, fixed_frequency_months, floating_frequency_months, floating_spread)
+PYQL_BERMUDAN_SWAPTION_NPV(evaluation_date, exercise_dates, maturity_date, nominal, fixed_rate, discount_rate, forward_rate, volatility, pay_fixed)
 PYQL_OIS_NPV(evaluation_date, maturity_date, nominal, fixed_rate, discount_rate, overnight_rate, pay_fixed, frequency_months, floating_spread)
 PYQL_OIS_FAIR_RATE(evaluation_date, maturity_date, nominal, discount_rate, overnight_rate, pay_fixed, frequency_months, floating_spread)
 PYQL_FLOAT_FLOAT_NPV(evaluation_date, maturity_date, nominal1, nominal2, discount_rate, forward_rate1, forward_rate2, spread1, spread2, pay_leg1, frequency1_months, frequency2_months)
 PYQL_NONSTANDARD_SWAP_NPV(evaluation_date, maturity_date, fixed_nominals, floating_nominals, fixed_rates, discount_rate, forward_rate, pay_fixed, frequency_months, gearings, spreads, intermediate_capital_exchange, final_capital_exchange)
+PYQL_CMS_SWAP_NPV(evaluation_date, maturity_date, nominal, fixed_rate, discount_rate, forward_rate, cms_tenor_months, pay_fixed)
+PYQL_CMS_SWAP_FAIR_RATE(evaluation_date, maturity_date, nominal, discount_rate, forward_rate, cms_tenor_months, pay_fixed)
+PYQL_XCCY_BASIS_SWAP_NPV(evaluation_date, maturity_date, pay_nominal, receive_nominal, spot_fx, domestic_rate, foreign_rate, pay_spread, receive_spread)
+PYQL_XCCY_BASIS_SWAP_FAIR_PAY_SPREAD(evaluation_date, maturity_date, pay_nominal, receive_nominal, spot_fx, domestic_rate, foreign_rate, pay_spread, receive_spread)
+PYQL_XCCY_FIXED_FLOAT_NPV(evaluation_date, maturity_date, fixed_nominal, float_nominal, spot_fx, fixed_rate, domestic_rate, foreign_rate, float_spread)
+PYQL_EQUITY_OPTION_NPV(option_type, evaluation_date, expiry_date, spot, strike, quantity, risk_free_rate, dividend_rate, volatility)
+PYQL_EQUITY_BARRIER_OPTION_NPV(option_type, evaluation_date, expiry_date, spot, strike, quantity, barrier, direction, style, risk_free_rate, dividend_rate, volatility)
+PYQL_EQUITY_ASIAN_OPTION_NPV(option_type, evaluation_date, expiry_date, spot, strike, quantity, risk_free_rate, dividend_rate, volatility)
+PYQL_EQUITY_TRS_NPV(evaluation_date, maturity_date, notional, spot, initial_price, risk_free_rate, dividend_rate, funding_rate, funding_spread)
+PYQL_COMMODITY_FORWARD_NPV(evaluation_date, maturity_date, spot, quantity, contract_price, forward_rate, discount_rate, long_position)
+PYQL_COMMODITY_SWAP_NPV(evaluation_date, maturity_date, spot, quantity, fixed_price, forward_rate, discount_rate, receive_floating)
+PYQL_COMMODITY_OPTION_NPV(option_type, evaluation_date, expiry_date, spot, quantity, strike, forward_rate, discount_rate, volatility)
+PYQL_CDS_NPV(evaluation_date, maturity_date, notional, running_spread, hazard_rate, recovery_rate, discount_rate, buy_protection)
+PYQL_CDS_OPTION_NPV(option_type, evaluation_date, expiry_date, maturity_date, notional, running_spread, strike_spread, hazard_rate, recovery_rate, discount_rate, volatility)
+PYQL_ZC_INFLATION_SWAP_NPV(evaluation_date, maturity_date, notional, fixed_rate, base_index, inflation_rate, discount_rate, receive_inflation)
+PYQL_YOY_INFLATION_SWAP_NPV(evaluation_date, maturity_date, notional, fixed_rate, base_index, inflation_rate, discount_rate, receive_inflation)
+PYQL_VARIANCE_SWAP_NPV(evaluation_date, maturity_date, strike_variance, notional, volatility, discount_rate, long_position)
+PYQL_VOLATILITY_SWAP_NPV(evaluation_date, maturity_date, strike_volatility, notional, volatility, discount_rate, long_position)
 ```
 
 Example Excel formulas:
@@ -114,12 +142,20 @@ Example Excel formulas:
 =PYQL_CAPFLOOR_NPV("CAP",DATE(2026,5,22),DATE(2026,11,24),DATE(2028,11,24),1000000,0.04,"",0.035,0.035,0.20,6)
 =PYQL_SWAPTION_NPV(DATE(2026,5,22),DATE(2027,5,24),DATE(2032,5,24),1000000,0.0375,0.035,0.035,0.18,TRUE)
 =PYQL_SWAPTION_NPV(DATE(2026,5,22),DATE(2027,5,24),DATE(2032,5,24),1000000,0.0375,0.035,0.035,"matrix|1Y,2Y|5Y,10Y|0.18,0.19;0.20,0.21",TRUE)
+=PYQL_BERMUDAN_SWAPTION_NPV(DATE(2026,5,22),"2027-05-24,2028-05-24,2029-05-24",DATE(2032,5,24),1000000,0.0375,0.035,0.036,0.18,TRUE)
 =PYQL_SWAP_FAIR_RATE(DATE(2026,5,22),DATE(2031,5,22),1000000,0.035,0.035,TRUE,6,6,0)
 =PYQL_SWAP_NPV(DATE(2026,5,22),DATE(2031,5,22),1000000,0.03,0.035,0.035,TRUE,6,6,0)
 =PYQL_OIS_FAIR_RATE(DATE(2026,5,22),DATE(2031,5,22),1000000,0.035,0.034,TRUE,12,0)
 =PYQL_OIS_NPV(DATE(2026,5,22),DATE(2031,5,22),1000000,0.034,0.035,0.034,TRUE,12,0)
 =PYQL_FLOAT_FLOAT_NPV(DATE(2026,5,22),DATE(2031,5,22),1000000,1000000,0.035,0.033,0.036,0,0.001,TRUE,3,6)
 =PYQL_NONSTANDARD_SWAP_NPV(DATE(2026,5,22),DATE(2028,5,22),"1000000,900000,800000,700000","1000000,900000,800000,700000","0.033,0.034,0.035,0.036",0.035,0.034,TRUE,6,"1,1,1,1","0.001,0.001,0.001,0.001",TRUE,TRUE)
+=PYQL_CMS_SWAP_FAIR_RATE(DATE(2026,5,22),DATE(2031,5,22),1000000,0.035,0.037,60,TRUE)
+=PYQL_XCCY_BASIS_SWAP_NPV(DATE(2026,5,22),DATE(2029,5,22),1000000,900000,1.10,0.04,0.025,0.001,0.002)
+=PYQL_EQUITY_BARRIER_OPTION_NPV("CALL",DATE(2026,5,22),DATE(2027,5,22),100,100,1000,130,"UP","KNOCK_OUT",0.04,0.015,0.22)
+=PYQL_COMMODITY_OPTION_NPV("CALL",DATE(2026,5,22),DATE(2027,5,22),80,1000,82,0.02,0.04,0.25)
+=PYQL_CDS_NPV(DATE(2026,5,22),DATE(2031,5,22),1000000,0.01,0.018,0.4,0.035,TRUE)
+=PYQL_ZC_INFLATION_SWAP_NPV(DATE(2026,5,22),DATE(2031,5,22),1000000,0.02,250,0.025,0.035,TRUE)
+=PYQL_VARIANCE_SWAP_NPV(DATE(2026,5,22),DATE(2027,5,22),0.04,1000000,0.25,0.04,TRUE)
 ```
 
 ### Option 2: RunPython Sheet Workflow
@@ -148,12 +184,31 @@ FRA_NPV
 FIXED_BOND_NPV
 CAPFLOOR_NPV
 SWAPTION_NPV
+BERMUDAN_SWAPTION_NPV
 SWAP_FAIR_RATE
 SWAP_NPV
 OIS_NPV
 OIS_FAIR_RATE
 FLOAT_FLOAT_NPV
 NONSTANDARD_SWAP_NPV
+CMS_SWAP_NPV
+CMS_SWAP_FAIR_RATE
+XCCY_BASIS_SWAP_NPV
+XCCY_BASIS_SWAP_FAIR_PAY_SPREAD
+XCCY_FIXED_FLOAT_NPV
+EQUITY_OPTION_NPV
+EQUITY_BARRIER_OPTION_NPV
+EQUITY_ASIAN_OPTION_NPV
+EQUITY_TRS_NPV
+COMMODITY_FORWARD_NPV
+COMMODITY_SWAP_NPV
+COMMODITY_OPTION_NPV
+CDS_NPV
+CDS_OPTION_NPV
+ZC_INFLATION_SWAP_NPV
+YOY_INFLATION_SWAP_NPV
+VARIANCE_SWAP_NPV
+VOLATILITY_SWAP_NPV
 ```
 
 Additional headers used by the supported products:
@@ -167,7 +222,15 @@ long_position, face_amount, coupon_rate, frequency_months, cap_floor_type,
 cap_rate, floor_rate, overnight_rate, cash_payoff, nominal1, nominal2,
 forward_rate1, forward_rate2, spread1, spread2, pay_leg1, frequency1_months,
 frequency2_months, fixed_nominals, floating_nominals, fixed_rates, gearings,
-spreads, intermediate_capital_exchange, final_capital_exchange
+spreads, intermediate_capital_exchange, final_capital_exchange,
+exercise_dates, cms_tenor_months, spread, gearing, paths, pay_nominal,
+receive_nominal, pay_spread, receive_spread, pay_leg_domestic, fixed_nominal,
+float_nominal, float_spread, fixed_leg_domestic, spot, quantity,
+risk_free_rate, dividend_rate, barrier, barrier_direction, barrier_style,
+initial_price, funding_rate, funding_spread, contract_price, fixed_price,
+receive_floating, running_spread, hazard_rate, recovery_rate, buy_protection,
+strike_spread, base_index, inflation_rate, receive_inflation,
+strike_variance, strike_volatility
 ```
 
 Rows are priced from row 2 downward until the first blank `product` cell. Results are written into the `output` column.
@@ -250,11 +313,16 @@ Swaption               physical European swaption priced by Black 76
 SwaptionVolatilityMatrix  ATM option-expiry/swap-tenor IR volatility matrix
 SwaptionVolatilityCube    ATM matrix plus strike-spread smile layers
 SabrSwaptionVolatilityCube SABR parameter surfaces for IR swaption smiles
+BermudanSwaption       Bermudan physical swaption with LSM exercise engine
+CmsSwap                fixed-vs-CMS swap with swaption-vol convexity adjustment
+CrossCurrencyBasisSwap constant-notional float-float XCCY swap
+CrossCurrencyFixedFloatSwap constant-notional fixed-float XCCY swap
 OvernightIndexedSwap   fixed-vs-compounded-overnight swap
 FloatFloatSwap         basis swap with separate schedules, curves, spreads, and gearings
 NonstandardSwap        custom per-period notionals/rates/gearings/spreads
 DigitalFxOption        cash-or-nothing analytic Garman-Kohlhagen option
 FX exotics             path-dependent options through deterministic Monte Carlo engines
+Equity exotics         barrier, Asian, lookback, cliquet, forward-start, basket MC engines
 ```
 
 The path-dependent FX exotic classes are intentionally Python-first because their inputs are richer than a compact spreadsheet row. Use `pyqlite.McFxExoticEngine` directly from Python for barriers, double barriers/no-touch, Asians, window barriers, forward-start, quanto, lookback, cliquet, and basket/correlation products.

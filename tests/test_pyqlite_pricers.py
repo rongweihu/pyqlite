@@ -9,11 +9,15 @@ from pyqlite import (
     Actual365Fixed,
     AnalyticFxOptionEngine,
     AnalyticDigitalFxOptionEngine,
+    AnalyticCommodityOptionEngine,
+    AnalyticEquityOptionEngine,
     BlackCapFloorEngine,
+    BlackCdsOptionEngine,
     BlackConstantVol,
     BlackDeltaVolSurface,
     BlackSwaptionEngine,
     BlackVarianceSurface,
+    BermudanSwaption,
     BusinessDayConvention,
     BarrierDirection,
     BarrierFxOption,
@@ -22,11 +26,36 @@ from pyqlite import (
     CliquetFxOption,
     DigitalFxOption,
     CapFloor,
+    CdsOption,
+    CommodityForward,
+    CommodityOption,
+    CommoditySwap,
+    CmsSwap,
+    CrossCurrencyBasisSwap,
+    CrossCurrencyFixedFloatSwap,
+    CreditDefaultSwap,
     DiscountingBondEngine,
+    DiscountingCommodityForwardEngine,
+    DiscountingCommoditySwapEngine,
+    DiscountingCmsSwapEngine,
+    DiscountingCrossCurrencySwapEngine,
+    DiscountingEquityTotalReturnSwapEngine,
     DiscountingFraEngine,
     DiscountingFxForwardEngine,
+    DiscountingInflationSwapEngine,
     DiscountingSwapEngine,
+    EquityOption,
+    EquityAsianOption,
+    EquityBarrierDirection,
+    EquityBarrierOption,
+    EquityBarrierStyle,
+    EquityBasketOption,
+    EquityCliquetOption,
+    EquityForwardStartOption,
+    EquityLookbackOption,
+    EquityTotalReturnSwap,
     FixedRateBond,
+    FlatHazardRate,
     FloatFloatSwap,
     FlatForwardCurve,
     ForwardRateAgreement,
@@ -35,12 +64,16 @@ from pyqlite import (
     FxOption,
     IborIndex,
     LookbackFxOption,
+    LsmBermudanSwaptionEngine,
+    McEquityExoticEngine,
     McFxExoticEngine,
+    MidPointCdsEngine,
     NonstandardSwap,
     OptionType,
     OvernightIndexedSwap,
     Period,
     PositionType,
+    ProtectionSide,
     QuantoFxOption,
     Schedule,
     SabrParameters,
@@ -59,6 +92,13 @@ from pyqlite import (
     DoubleBarrierFxOption,
     AsianFxOption,
     WindowBarrierFxOption,
+    VarianceSwap,
+    VarianceSwapEngine,
+    VolatilitySwap,
+    VolatilitySwapEngine,
+    YearOnYearInflationSwap,
+    ZeroCouponInflationSwap,
+    ZeroInflationCurve,
 )
 from pyqlite.cashflows import ibor_leg
 from pyqlite.math.black import black_formula
@@ -557,6 +597,182 @@ class PricingTests(unittest.TestCase):
 
         self.assertGreater(result.value, 0.0)
         self.assertGreater(vol.black_vol(expiry, 1.27), 0.0)
+
+    def test_credit_default_swap_and_cds_option(self) -> None:
+        today = date(2026, 5, 22)
+        calendar = WeekendsOnly()
+        schedule = Schedule.generate(today, date(2031, 5, 22), Period(3, TimeUnit.MONTHS), calendar=calendar)
+        discount = FlatForwardCurve(today, 0.035, Actual365Fixed())
+        hazard = FlatHazardRate(today, 0.02, Actual365Fixed())
+        cds = CreditDefaultSwap(ProtectionSide.BUYER, 10_000_000.0, 0.012, schedule, Actual360())
+
+        result = MidPointCdsEngine(hazard, 0.40, discount).calculate(cds)
+        option = CdsOption("CALL", date(2027, 5, 22), result.fair_spread, cds)
+        option_result = BlackCdsOptionEngine(hazard, 0.40, discount, BlackConstantVol(today, 0.35, Actual365Fixed())).calculate(option)
+
+        self.assertGreater(result.default_leg_npv, 0.0)
+        self.assertGreater(result.fair_spread, 0.0)
+        self.assertGreater(option_result.value, 0.0)
+
+    def test_equity_option_and_total_return_swap(self) -> None:
+        today = date(2026, 5, 22)
+        expiry = date(2027, 5, 22)
+        risk_free = FlatForwardCurve(today, 0.04, Actual365Fixed())
+        dividend = FlatForwardCurve(today, 0.015, Actual365Fixed())
+        option = EquityOption(OptionType.CALL, 1_000.0, 105.0, expiry)
+
+        option_result = AnalyticEquityOptionEngine(
+            SimpleQuote(100.0),
+            dividend,
+            risk_free,
+            BlackConstantVol(today, 0.22, Actual365Fixed()),
+        ).calculate(option)
+
+        schedule = Schedule.generate(today, expiry, Period(3, TimeUnit.MONTHS), calendar=WeekendsOnly())
+        trs = EquityTotalReturnSwap(SwapType.RECEIVER, 1_000_000.0, 100.0, expiry, schedule, 0.0025, Actual360())
+        trs_result = DiscountingEquityTotalReturnSwapEngine(SimpleQuote(100.0), dividend, risk_free, risk_free).calculate(trs)
+
+        self.assertGreater(option_result.value, 0.0)
+        self.assertNotEqual(trs_result.value, 0.0)
+        self.assertNotEqual(trs_result.fair_value, 0.0)
+
+    def test_commodity_forward_swap_and_option(self) -> None:
+        today = date(2026, 5, 22)
+        maturity = date(2027, 5, 22)
+        discount = FlatForwardCurve(today, 0.04, Actual365Fixed())
+        carry = FlatForwardCurve(today, -0.03, Actual365Fixed())
+        spot = SimpleQuote(80.0)
+
+        forward = CommodityForward(PositionType.LONG, 1_000.0, 78.0, maturity)
+        forward_engine = DiscountingCommodityForwardEngine(carry, discount, spot)
+        forward_result = forward_engine.calculate(forward)
+
+        schedule = Schedule.generate(today, maturity, Period(3, TimeUnit.MONTHS), calendar=WeekendsOnly())
+        swap = CommoditySwap(SwapType.RECEIVER, 1_000.0, 81.0, schedule)
+        swap_result = DiscountingCommoditySwapEngine(carry, discount, spot).calculate(swap)
+
+        option = CommodityOption(OptionType.CALL, 1_000.0, 82.0, maturity)
+        option_result = AnalyticCommodityOptionEngine(carry, discount, BlackConstantVol(today, 0.30, Actual365Fixed()), spot).calculate(option)
+
+        self.assertGreater(forward_result.fair_value, 0.0)
+        self.assertNotEqual(forward_result.value, 0.0)
+        self.assertNotEqual(swap_result.value, 0.0)
+        self.assertGreater(option_result.value, 0.0)
+
+    def test_inflation_swaps(self) -> None:
+        today = date(2026, 5, 22)
+        maturity = date(2031, 5, 22)
+        discount = FlatForwardCurve(today, 0.035, Actual365Fixed())
+        inflation = ZeroInflationCurve(today, 300.0, 0.025, Actual365Fixed())
+        engine = DiscountingInflationSwapEngine(inflation, discount)
+
+        zc = ZeroCouponInflationSwap(SwapType.RECEIVER, 1_000_000.0, today, maturity, 0.02, 300.0, Actual365Fixed())
+        zc_result = engine.calculate_zero_coupon(zc)
+
+        schedule = Schedule.generate(today, maturity, Period(12, TimeUnit.MONTHS), calendar=WeekendsOnly())
+        yoy = YearOnYearInflationSwap(SwapType.RECEIVER, 1_000_000.0, schedule, 0.02, 300.0, Actual365Fixed())
+        yoy_result = engine.calculate_year_on_year(yoy)
+
+        self.assertNotEqual(zc_result.value, 0.0)
+        self.assertGreater(zc_result.fair_value, 0.0)
+        self.assertNotEqual(yoy_result.value, 0.0)
+
+    def test_variance_and_volatility_swaps(self) -> None:
+        today = date(2026, 5, 22)
+        maturity = date(2027, 5, 22)
+        discount = FlatForwardCurve(today, 0.04, Actual365Fixed())
+        vol = BlackConstantVol(today, 0.22, Actual365Fixed())
+
+        variance = VarianceSwap(PositionType.LONG, 0.20 * 0.20, 1_000_000.0, today, maturity)
+        volatility = VolatilitySwap(PositionType.LONG, 0.20, 1_000_000.0, today, maturity)
+
+        variance_result = VarianceSwapEngine(vol, discount).calculate(variance)
+        volatility_result = VolatilitySwapEngine(vol, discount).calculate(volatility)
+
+        self.assertGreater(variance_result.value, 0.0)
+        self.assertGreater(volatility_result.value, 0.0)
+
+    def test_bermudan_swaption_lsm_engine(self) -> None:
+        today = date(2026, 5, 22)
+        calendar = WeekendsOnly()
+        curve = FlatForwardCurve(today, 0.035, Actual365Fixed())
+        schedule = Schedule.generate(date(2027, 5, 24), date(2032, 5, 24), Period(6, TimeUnit.MONTHS), calendar=calendar)
+        index = IborIndex("USD-LIBOR-6M", Period(6, TimeUnit.MONTHS), 2, calendar, Actual360(), curve)
+        swap = VanillaSwap(SwapType.PAYER, 1_000_000.0, schedule, 0.035, Actual360(), schedule, index, 0.0, Actual360())
+        bermudan = BermudanSwaption(swap, (date(2027, 5, 24), date(2028, 5, 24), date(2029, 5, 24)))
+
+        result = LsmBermudanSwaptionEngine(curve, BlackConstantVol(today, 0.18, Actual365Fixed()), paths=512).calculate(bermudan)
+
+        self.assertGreater(result.value, 0.0)
+        self.assertGreater(result.annuity, 0.0)
+
+    def test_cms_swap_discounting(self) -> None:
+        today = date(2026, 5, 22)
+        calendar = WeekendsOnly()
+        discount = FlatForwardCurve(today, 0.035, Actual365Fixed())
+        forward = FlatForwardCurve(today, 0.037, Actual365Fixed())
+        schedule = Schedule.generate(today, date(2031, 5, 22), Period(12, TimeUnit.MONTHS), calendar=calendar)
+        vol = SwaptionVolatilityMatrix(
+            today,
+            (Period(1, TimeUnit.YEARS), Period(5, TimeUnit.YEARS)),
+            (Period(5, TimeUnit.YEARS), Period(10, TimeUnit.YEARS)),
+            ((0.18, 0.19), (0.20, 0.21)),
+        )
+        cms = CmsSwap(SwapType.PAYER, 1_000_000.0, schedule, 0.036, Actual360(), schedule, Period(5, TimeUnit.YEARS), Actual360())
+
+        result = DiscountingCmsSwapEngine(discount, forward, vol).calculate(cms)
+
+        self.assertNotEqual(result.value, 0.0)
+        self.assertGreater(result.fair_rate, 0.0)
+
+    def test_cross_currency_swaps(self) -> None:
+        today = date(2026, 5, 22)
+        calendar = WeekendsOnly()
+        usd = FlatForwardCurve(today, 0.04, Actual365Fixed())
+        eur = FlatForwardCurve(today, 0.025, Actual365Fixed())
+        schedule = Schedule.generate(today, date(2029, 5, 22), Period(6, TimeUnit.MONTHS), calendar=calendar)
+        usd_index = IborIndex("USD-6M", Period(6, TimeUnit.MONTHS), 2, calendar, Actual360(), usd)
+        eur_index = IborIndex("EUR-6M", Period(6, TimeUnit.MONTHS), 2, calendar, Actual360(), eur)
+        engine = DiscountingCrossCurrencySwapEngine("USD", usd, "EUR", eur, SimpleQuote(1.10))
+
+        basis = CrossCurrencyBasisSwap(1_000_000.0, "USD", schedule, usd_index, 0.001, 1.0, 900_000.0, "EUR", schedule, eur_index, 0.002, 1.0)
+        fixed_float = CrossCurrencyFixedFloatSwap(SwapType.PAYER, 1_000_000.0, "USD", schedule, 0.04, Actual360(), 900_000.0, "EUR", schedule, eur_index, 0.001)
+
+        basis_result = engine.calculate_basis_swap(basis)
+        fixed_float_result = engine.calculate_fixed_float_swap(fixed_float)
+
+        self.assertNotEqual(basis_result.value, 0.0)
+        self.assertNotEqual(fixed_float_result.value, 0.0)
+
+    def test_equity_exotics_mc_engine(self) -> None:
+        today = date(2026, 5, 22)
+        expiry = date(2027, 5, 22)
+        risk_free = FlatForwardCurve(today, 0.04, Actual365Fixed())
+        dividend = FlatForwardCurve(today, 0.015, Actual365Fixed())
+        engine = McEquityExoticEngine(SimpleQuote(100.0), dividend, risk_free, BlackConstantVol(today, 0.22, Actual365Fixed()), paths=512, steps=24)
+
+        barrier = engine.calculate_barrier(EquityBarrierOption(OptionType.CALL, 1_000.0, 100.0, 130.0, EquityBarrierDirection.UP, EquityBarrierStyle.KNOCK_OUT, expiry))
+        asian = engine.calculate_asian(EquityAsianOption(OptionType.CALL, 1_000.0, 100.0, expiry))
+        lookback = engine.calculate_lookback(EquityLookbackOption(OptionType.CALL, 1_000.0, 100.0, expiry))
+        cliquet = engine.calculate_cliquet(EquityCliquetOption(1_000.0, (date(2026, 8, 22), date(2026, 11, 22), expiry), -0.05, 0.05))
+        forward_start = engine.calculate_forward_start(EquityForwardStartOption(OptionType.CALL, 1_000.0, 1.0, date(2026, 11, 22), expiry))
+        basket = engine.calculate_basket(
+            EquityBasketOption(
+                OptionType.CALL,
+                (500.0, 500.0),
+                (100.0, 95.0),
+                95_000.0,
+                expiry,
+                ((1.0, 0.35), (0.35, 1.0)),
+            )
+        )
+
+        self.assertGreaterEqual(barrier.value, 0.0)
+        self.assertGreater(asian.value, 0.0)
+        self.assertGreater(lookback.value, 0.0)
+        self.assertNotEqual(cliquet.value, 0.0)
+        self.assertGreater(forward_start.value, 0.0)
+        self.assertGreater(basket.value, 0.0)
 
 
 if __name__ == "__main__":

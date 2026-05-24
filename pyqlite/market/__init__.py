@@ -1,4 +1,6 @@
 from pyqlite.market.curves import DiscountCurve, FlatForwardCurve, ZeroCurve
+from pyqlite.market.default_curves import FlatHazardRate, SurvivalProbabilityCurve
+from pyqlite.market.inflation import InflationIndexCurve, ZeroInflationCurve
 from pyqlite.market.quote import SimpleQuote
 from pyqlite.market.swaption_volatility import (
     ConstantSwaptionVolatility,
@@ -17,10 +19,14 @@ __all__ = [
     "ConstantSwaptionVolatility",
     "DiscountCurve",
     "FlatForwardCurve",
+    "FlatHazardRate",
+    "InflationIndexCurve",
     "SabrParameters",
     "SabrSwaptionVolatilityCube",
     "SimpleQuote",
+    "SurvivalProbabilityCurve",
     "SwaptionVolatilityCube",
     "SwaptionVolatilityMatrix",
     "ZeroCurve",
+    "ZeroInflationCurve",
 ]
