@@ -1,4 +1,4 @@
-include README.pyqlite.md
+include README.pyquantlib.md
 recursive-include examples *.csv
 recursive-include examples *.py
 recursive-include examples *.bas

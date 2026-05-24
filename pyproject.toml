@@ -3,10 +3,10 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyqlite"
+name = "pyquantlib"
 version = "0.1.0"
 description = "A standalone Python pricing kernel for IR swaps, FX forwards, and European FX options."
-readme = "README.pyqlite.md"
+readme = "README.pyquantlib.md"
 requires-python = ">=3.9"
 dependencies = []
 classifiers = [
@@ -20,4 +20,4 @@ classifiers = [
 excel = ["xlwings>=0.30"]
 
 [tool.setuptools.packages.find]
-include = ["pyqlite*", "pyqlite_xlwings*"]
+include = ["pyquantlib*", "pyquantlib_xlwings*"]
